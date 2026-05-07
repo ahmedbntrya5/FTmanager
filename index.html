@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Football Manager</title>
+  <link rel="stylesheet" href="css/Style.css">
+</head>
+<body>
+  <nav class="topnav">
+    <div class="topnav-inner">
+      <a class="topnav-brand" href="#" id="nav-home-link">🏆 Football Manager</a>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-ghost btn-sm" id="btn-export-data" title="Export encrypted backup">⬇ Export</button>
+        <button class="btn btn-ghost btn-sm" id="btn-import-data" title="Import encrypted backup">⬆ Import</button>
+        <input type="file" id="import-file-input" accept=".fmbak" style="display:none">
+        <button class="btn btn-ghost" id="nav-logout">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main-content">
+    <div id="view-home"       style="display:none"></div>
+    <div id="view-tournament" style="display:none"></div>
+    <div id="view-team"       style="display:none"></div>
+    <div id="view-player"     style="display:none"></div>
+    <div id="view-match"      style="display:none"></div>
+  </main>
+
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/modules/tournament.js"></script>
+  <script src="js/modules/team.js"></script>
+  <script src="js/modules/player.js"></script>
+  <script src="js/modules/match.js"></script>
+  <script src="js/modules/stats.js"></script>
+  <script src="js/Ui/homeUI.js"></script>
+  <script src="js/Ui/TournamentUI.js"></script>
+  <script src="js/Ui/teamUI.js"></script>
+  <script src="js/Ui/playerUI.js"></script>
+  <script src="js/Ui/matchUI.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    (function () {
+      if (!sessionStorage.getItem('fm_auth')) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      document.getElementById('nav-home-link').addEventListener('click', e => {
+        e.preventDefault();
+        navigate('home');
+      });
+
+      document.getElementById('nav-logout').addEventListener('click', () => {
+        sessionStorage.removeItem('fm_auth');
+        window.location.href = 'login.html';
+      });
+
+      /* ── AES-GCM Backup via Web Crypto API ── */
+      const FM_KEY_PASS = 'FM_BACKUP_KEY_ADMIN2009';
+
+      async function deriveKey(salt, usage) {
+        const enc = new TextEncoder();
+        const keyMaterial = await crypto.subtle.importKey(
+          'raw', enc.encode(FM_KEY_PASS), 'PBKDF2', false, ['deriveKey']
+        );
+        return crypto.subtle.deriveKey(
+          { name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' },
+          keyMaterial,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          [usage]
+        );
+      }
+
+      async function encryptJSON(jsonStr) {
+        const enc = new TextEncoder();
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iv   = crypto.getRandomValues(new Uint8Array(12));
+        const key  = await deriveKey(salt, 'encrypt');
+        const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(jsonStr));
+        const buf = new Uint8Array(salt.length + iv.length + cipher.byteLength);
+        buf.set(salt, 0);
+        buf.set(iv, salt.length);
+        buf.set(new Uint8Array(cipher), salt.length + iv.length);
+        return btoa(String.fromCharCode(...buf));
+      }
+
+      async function decryptBase64(b64) {
+        const dec = new TextDecoder();
+        const buf  = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        const salt = buf.slice(0, 16);
+        const iv   = buf.slice(16, 28);
+        const data = buf.slice(28);
+        const key  = await deriveKey(salt, 'decrypt');
+        const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+        return dec.decode(plain);
+      }
+
+      document.getElementById('btn-export-data').addEventListener('click', async () => {
+        try {
+          const json = JSON.stringify(appData);
+          const b64  = await encryptJSON(json);
+          const blob = new Blob([b64], { type: 'text/plain' });
+          const a    = document.createElement('a');
+          a.href     = URL.createObjectURL(blob);
+          a.download = 'fm-backup-' + new Date().toISOString().slice(0, 10) + '.fmbak';
+          a.click();
+          URL.revokeObjectURL(a.href);
+          showToast('Backup exported successfully', 'success');
+        } catch (err) {
+          console.error('Export failed:', err);
+          showToast('Export failed', 'error');
+        }
+      });
+
+      document.getElementById('btn-import-data').addEventListener('click', () => {
+        document.getElementById('import-file-input').click();
+      });
+
+      document.getElementById('import-file-input').addEventListener('change', async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        e.target.value = '';
+        try {
+          const b64  = await file.text();
+          const json = await decryptBase64(b64.trim());
+          const parsed = JSON.parse(json);
+          if (!parsed.tournaments || !parsed.teams) throw new Error('Invalid backup structure');
+          if (!confirm('Import will REPLACE all current data. Continue?')) return;
+          appData.tournaments = parsed.tournaments || [];
+          appData.teams       = parsed.teams       || [];
+          appData.players     = parsed.players     || [];
+          appData.matches     = parsed.matches     || [];
+          saveData();
+          showToast('Backup imported!', 'success');
+          navigate('home');
+        } catch (err) {
+          console.error('Import failed:', err);
+          showToast('Import failed — invalid or corrupted backup file', 'error');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Football Manager — Login</title>
+  <link rel="stylesheet" href="css/Style.css">
+  <style>
+    .login-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-primary);
+    }
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .login-logo { font-size: 56px; margin-bottom: 8px; }
+    .login-title { font-size: 26px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+    .login-subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 32px; }
+    .login-form { display: flex; flex-direction: column; gap: 16px; }
+    .login-error {
+      color: var(--color-danger);
+      font-size: 13px;
+      padding: 8px 12px;
+      background: rgba(239,68,68,0.1);
+      border-radius: 8px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <div class="login-logo">🏆</div>
+      <h1 class="login-title">Football Manager</h1>
+      <p class="login-subtitle">Enter your access code to continue</p>
+      <div class="login-form">
+        <input type="password" id="access-code" class="form-input" placeholder="Access Code" autocomplete="off">
+        <div class="login-error" id="login-error">Invalid access code. Please try again.</div>
+        <button class="btn btn-primary" id="btn-login">Login</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const CORRECT_CODE = 'ADMIN2009MORO';
+    const input = document.getElementById('access-code');
+    const errEl = document.getElementById('login-error');
+
+    function tryLogin() {
+      const val = input.value.trim();
+      if (val === CORRECT_CODE) {
+        sessionStorage.setItem('fm_auth', '1');
+        window.location.href = 'index.html';
+      } else {
+        errEl.style.display = 'block';
+        input.value = '';
+        input.focus();
+      }
+    }
+
+    document.getElementById('btn-login').addEventListener('click', tryLogin);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+    input.focus();
+  </script>
+</body>
+</html>
